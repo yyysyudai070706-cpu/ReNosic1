@@ -1,0 +1,142 @@
+{% extends 'renosic_app/base.html' %}
+{% block title %}{{ customer.company_name }}の詳細{% endblock %}
+
+{% block content %} 
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>{{ customer.company_name }}</h1>
+    <div>
+        <a href="{% url 'customer_update' customer.pk %}" class="btn btn-secondary">[編集する]</a>
+        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteConfirmModal">
+            [削除する]
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <p><strong>担当者名:</strong> {{ customer.contact_name }}</p>
+        <p><strong>メール:</strong> {{ customer.email }}</p>
+    </div>
+</div>
+
+<h3 class="mt-4">商談履歴:</h3>
+<div class="card mb-3 bg-light">
+    <div class="card-body">
+        <h6 class="card-tittle">商談をクリック追加</h6>
+    <form id="activity-form">
+        {% csrf_token %}
+        <input type="hidden" name="customer_id" value="{{ customer.id }}">
+
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="date" name="activity_date" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <select name="status" class="form-select">
+                    <option value ="APPO">アポ</option>
+                    <option value ="MEETING">商談中</option>
+                    <option value ="PROPOSAL">提案中</option>
+                    <option value ="WON">受注</option>
+                    <option value ="LOST">失注</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <input type="text" name="note" class="form-control" placeholder="メモを入力" required>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">追加</button> </div>
+        </div>
+    </form>
+    </div>
+</div>
+<div class="card">
+    <div class="card-body" id="activity-list"> {% for activity in customer.activity_set.all|dictsortreversed:"activity_date" %}
+            <div class="mb-2">
+                <strong>{{ activity.activity_date }}</strong>
+                （{{ activity.get_status_display }}）<br>
+                {{ activity.note }}
+            </div>
+            {% if not forloop.last %}<hr>{% endif %}
+        {% empty %}
+            <p class="text-muted" id="no-activity-msg">商談履歴はありません。</p> {% endfor %}
+    </div>
+</div>
+
+<a href="{% url 'customer_list' %}" class="btn btn-outline-primary">一覧に戻る</a>
+
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">削除の確認</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+            </div>
+            <div class="modal-body">
+                本当に {{ customer.company_name }} を削除しますか？<br>この操作は元に戻せません。
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                <form action="{% url 'customer_delete' customer.pk %}" method="POST" style="display:inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">はい、削除します</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('activity-form').addEventListener('submit',function(e){
+        e.preventDefault(); // 👈 e.preeventDefault() を修正
+        const form = this;
+        const formData = new FormData(form);
+        const url = "{% url 'ajax_add_activity' %}";
+
+        fetch(url,{ // 👈 ffetch を修正
+            method: 'POST',
+            body: formData,
+            headers:{
+                'X-Requested-With':'XMLHttpRequest'
+            }
+        })
+        .then(response => {
+            if(!response.ok){
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            const noMsg = document.getElementById('no-activity-msg');
+            if(noMsg)noMsg.remove();
+
+            const list = document.getElementById('activity-list'); // 👈 ID 'activity-list' を参照
+            
+            // 既存のHTML構造 (<div>と<hr>) に合わせる
+            const newItemContainer = document.createElement('div');
+            
+            // サーバーからのレスポンスのキー名が不明なため、status_displayを仮定します
+            const statusDisplay = data.status_display || data.status;
+
+            newItemContainer.innerHTML =`
+                <div class="mb-2">
+                    <strong>${data.activity_date}</strong>
+                    （${statusDisplay}）<br>
+                    ${data.note}
+                </div>
+                <hr>
+            `;
+            
+            // リストの先頭に追加
+            list.prepend(newItemContainer.lastChild); // <hr>
+            list.prepend(newItemContainer.firstChild); // <div>
+            
+            form.reset(); // フォームをリセット
+
+        })
+        .catch(error => {
+            console.error('Error:',error);
+            alert('エラーが発生しました');
+        })
+    })
+</script>
+{% endblock %}
